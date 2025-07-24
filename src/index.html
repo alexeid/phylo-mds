@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= htmlWebpackPlugin.options.title %></title>
+</head>
+<body>
+    <div class="container">
+        <h1>Phylogenetic Tree MDS Visualization</h1>
+        <p class="description">
+            Upload a file containing multiple phylogenetic trees to visualize their relationships using 
+            Multidimensional Scaling (MDS) based on pairwise distances.
+        </p>
+        
+        <div class="controls">
+            <div class="file-input-wrapper">
+                <label for="treeFile">Select tree file:</label>
+                <input type="file" id="treeFile" accept=".nwk,.newick,.nex,.nexus,.xml,.nxml,.json">
+            </div>
+
+            <div>
+                <label for="maxTrees">Max trees:</label>
+                <input type="number" id="maxTrees" value="500" min="2" max="10000" step="100">
+            </div>
+
+            <div>
+                <label for="burnin" title="Percentage of trees to discard from the beginning of the file">Burnin %:</label>
+                <input type="number" id="burnin" value="10" min="0" max="99" step="5" title="Discard first X% of trees">
+            </div>
+
+            <div>
+                <label for="distanceMetric">Distance metric:</label>
+                <select id="distanceMetric">
+                    <option value="rf">Robinson-Foulds (RF)</option>
+                    <option value="spr">Subtree Prune and Regraft (SPR)</option>
+                    <option value="path">Path Distance</option>
+                </select>
+            </div>
+            
+            <div>
+                <label for="fileFormat">File format:</label>
+                <select id="fileFormat">
+                    <option value="auto">Auto-detect</option>
+                    <option value="newick">Newick</option>
+                    <option value="nexus">Nexus</option>
+                    <option value="phyloxml">PhyloXML</option>
+                    <option value="nexml">NeXML</option>
+                    <option value="phyjson">PhyJSON</option>
+                </select>
+            </div>
+            
+            <button id="calculateBtn" disabled>Calculate MDS</button>
+        </div>
+        
+        <div class="error" id="errorMsg"></div>
+        <div class="loading" id="loadingMsg">
+            <div class="loading-text">Initializing...</div>
+            <div class="loading-progress"></div>
+        </div>        
+        <div id="plot"></div>
+        
+        <div class="matrix-toggle hidden" id="matrixToggle">Show/Hide Distance Matrix</div>
+        <div class="distance-matrix hidden" id="distanceMatrix"></div>
+        
+        <div class="info">
+            <strong>Instructions:</strong>
+            <ul>
+                <li>Upload a file containing multiple phylogenetic trees</li>
+                <li>Select the distance metric to use for comparison</li>
+                <li>Click "Calculate MDS" to generate the visualization</li>
+                <li>Hover over points in the plot to see tree labels</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
