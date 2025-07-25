@@ -15,20 +15,49 @@ export function readTrees(content, format) {
             format = detectFormat(content);
         }
         
+        let trees;
         switch(format) {
             case 'newick':
-                return phylo.readTreesFromNewick(content);
+                trees = phylo.readTreesFromNewick(content);
+                break;
             case 'nexus':
-                return phylo.readTreesFromNexus(content);
+                trees = phylo.readTreesFromNexus(content);
+                break;
             case 'phyloxml':
-                return phylo.readTreesFromPhyloXML(content);
+                trees = phylo.readTreesFromPhyloXML(content);
+                break;
             case 'nexml':
-                return phylo.readTreesFromNeXML(content);
+                trees = phylo.readTreesFromNeXML(content);
+                break;
             case 'phyjson':
-                return phylo.readTreesFromPhyJSON(content);
+                trees = phylo.readTreesFromPhyJSON(content);
+                break;
             default:
                 throw new Error('Unknown format: ' + format);
         }
+        
+        // The trees from phylojs should already have proper structure
+        // Just ensure they have the methods we need
+        trees.forEach(tree => {
+            // Add leafList getter if not present
+            if (!tree.leafList && tree.nodeList) {
+                Object.defineProperty(tree, 'leafList', {
+                    get: function() {
+                        return this.nodeList.filter(n => n.isLeaf());
+                    }
+                });
+            }
+            
+            // Add getTipLabels method if not present
+            if (!tree.getTipLabels) {
+                tree.getTipLabels = function() {
+                    const leafList = this.leafList || [];
+                    return leafList.map(leaf => leaf.label || leaf.id.toString());
+                };
+            }
+        });
+        
+        return trees;
     } catch (error) {
         throw new Error('Failed to parse trees: ' + error.message);
     }

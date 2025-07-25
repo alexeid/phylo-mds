@@ -10,7 +10,7 @@
         <h1>Phylogenetic Tree MDS Visualization</h1>
         <p class="description">
             Upload a file containing multiple phylogenetic trees to visualize their relationships using 
-            Multidimensional Scaling (MDS) based on pairwise distances.
+            Multidimensional Scaling (MDS) based on pairwise distances or compute phylogenetic entropy using CCD.
         </p>
         
         <div class="controls">
@@ -51,6 +51,7 @@
             </div>
             
             <button id="calculateBtn" disabled>Calculate MDS</button>
+            <button id="computeCCDBtn" disabled>Compute CCD Entropy</button>
         </div>
         
         <div class="error" id="errorMsg"></div>
@@ -63,13 +64,16 @@
         <div class="matrix-toggle hidden" id="matrixToggle">Show/Hide Distance Matrix</div>
         <div class="distance-matrix hidden" id="distanceMatrix"></div>
         
+        <div class="ccd-stats hidden" id="ccdStats"></div>
+        
         <div class="info">
             <strong>Instructions:</strong>
             <ul>
                 <li>Upload a file containing multiple phylogenetic trees</li>
-                <li>Select the distance metric to use for comparison</li>
-                <li>Click "Calculate MDS" to generate the visualization</li>
-                <li>Hover over points in the plot to see tree labels</li>
+                <li>Click "Compute CCD Entropy" to calculate the phylogenetic entropy using the Conditional Clade Distribution</li>
+                <li>Click "Calculate MDS" to generate a visualization of tree relationships</li>
+                <li>For MDS: Select the distance metric and adjust parameters as needed</li>
+                <li>Hover over points in the MDS plot to see tree labels</li>
             </ul>
         </div>
     </div>

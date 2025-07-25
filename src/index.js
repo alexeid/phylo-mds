@@ -3,13 +3,16 @@ import { readTrees } from './tree-reader';
 import { calculateDistanceMatrix, calculateDistanceMatrixWithProgress } from './distance-metrics';
 import { classicalMDS } from './mds';
 import { plotMDS, displayDistanceMatrix } from './plot';
+import { CCD1, computeCCDStatistics } from './ccd';
 
 let trees = [];
 let fileContent = '';
+let currentCCD = null;
 
 // DOM elements
 const treeFileInput = document.getElementById('treeFile');
 const calculateBtn = document.getElementById('calculateBtn');
+const computeCCDBtn = document.getElementById('computeCCDBtn');
 const errorMsg = document.getElementById('errorMsg');
 const loadingMsg = document.getElementById('loadingMsg');
 const matrixToggle = document.getElementById('matrixToggle');
@@ -18,6 +21,9 @@ const distanceMatrixDiv = document.getElementById('distanceMatrix');
 // Event listeners
 treeFileInput.addEventListener('change', handleFileUpload);
 calculateBtn.addEventListener('click', calculateMDS);
+if (computeCCDBtn) {
+    computeCCDBtn.addEventListener('click', computeCCD);
+}
 matrixToggle.addEventListener('click', toggleMatrix);
 
 function handleFileUpload(e) {
@@ -27,7 +33,16 @@ function handleFileUpload(e) {
         reader.onload = function(e) {
             fileContent = e.target.result;
             calculateBtn.disabled = false;
+            if (computeCCDBtn) {
+                computeCCDBtn.disabled = false;
+            }
             hideError();
+            // Clear previous results
+            currentCCD = null;
+            const ccdStats = document.getElementById('ccdStats');
+            if (ccdStats) {
+                ccdStats.classList.add('hidden');
+            }
         };
         reader.readAsText(file);
     }
@@ -48,7 +63,6 @@ function showLoading(message) {
     loadingText.textContent = message || 'Processing...';
     loadingDiv.style.display = 'block';
 }
-
 
 function hideLoading() {
     document.getElementById('loadingMsg').style.display = 'none';
@@ -176,3 +190,248 @@ function updateProgress(message) {
     }
 }
 
+async function computeCCD() {
+    hideError();
+    showLoading('Reading trees...');
+    
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    try {
+        const format = document.getElementById('fileFormat').value;
+        const burninPercent = parseInt(document.getElementById('burnin').value) || 0;
+        
+        // Read all trees
+        trees = readTrees(fileContent, format);
+        
+        if (trees.length < 2) {
+            throw new Error('At least 2 trees are required for CCD analysis');
+        }
+        
+        showLoading(`Constructing CCD from ${trees.length} trees...`);
+        
+        // Create CCD with burnin
+        const burnin = burninPercent / 100;
+        
+        // Create a progress callback
+        const progressCallback = async (current, total) => {
+            const percent = Math.round((current / total) * 100);
+            showLoading(`Processing tree ${current} of ${total} (${percent}%)...`);
+            // Allow UI to update
+            if (current % 10 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        };
+        
+        currentCCD = await CCD1.fromTreesAsync(trees, burnin, progressCallback);
+        
+        showLoading('Computing CCD statistics...');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        
+        // Quick check on CCD size
+        console.log(`CCD has ${currentCCD.getNumberOfClades()} clades`);
+        
+        // For very large CCDs, warn the user
+        if (currentCCD.getNumberOfClades() > 10000) {
+            showLoading('Large CCD detected, this may take a moment...');
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        // Compute basic statistics first
+        const stats = {
+            numberOfTrees: currentCCD.getNumberOfBaseTrees(),
+            numberOfClades: currentCCD.getNumberOfClades(),
+            numberOfLeaves: currentCCD.getNumberOfLeaves()
+        };
+        
+        try {
+            // Compute clade probabilities
+            showLoading('Computing clade probabilities...');
+            await new Promise(resolve => setTimeout(resolve, 0));
+            currentCCD.computeCladeProbabilitiesIfDirty();
+            
+            // Compute entropy
+            showLoading('Computing phylogenetic entropy...');
+            await new Promise(resolve => setTimeout(resolve, 0));
+            stats.entropy = currentCCD.getEntropy();
+            
+            // Compute Lewis entropy
+            showLoading('Computing entropy (Lewis method)...');
+            await new Promise(resolve => setTimeout(resolve, 0));
+            
+            try {
+                // Create a progress callback for Lewis entropy
+                let lastUpdate = Date.now();
+                const lewisProgressCallback = async (message) => {
+                    const now = Date.now();
+                    // Update UI at most every 100ms to avoid overwhelming it
+                    if (now - lastUpdate > 100) {
+                        showLoading(message);
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        lastUpdate = now;
+                    }
+                };
+                
+                stats.entropyLewis = currentCCD.getEntropyLewis(lewisProgressCallback);
+            } catch (error) {
+                console.error('Error computing Lewis entropy:', error);
+                stats.entropyLewis = NaN;
+            }
+            
+            // Compute max tree probability
+            showLoading('Computing maximum tree probability...');
+            await new Promise(resolve => setTimeout(resolve, 0));
+            
+            try {
+                // Create a progress callback for max tree probability
+                let lastUpdate = Date.now();
+                const maxProbProgressCallback = async (message) => {
+                    const now = Date.now();
+                    // Update UI at most every 100ms to avoid overwhelming it
+                    if (now - lastUpdate > 100) {
+                        showLoading(message);
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        lastUpdate = now;
+                    }
+                };
+                
+                stats.maxLogTreeProbability = currentCCD.getMaxLogTreeProbability(maxProbProgressCallback);
+                stats.maxTreeProbability = currentCCD.getMaxTreeProbability();
+            } catch (error) {
+                console.error('Error computing max tree probability:', error);
+                stats.maxLogTreeProbability = NaN;
+                stats.maxTreeProbability = NaN;
+            }
+            
+            // Find most probable clades
+            showLoading('Finding most probable clades...');
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const clades = Array.from(currentCCD.getClades());
+            const nonTrivialClades = clades.filter(c => !c.isLeaf() && !c.isRoot());
+            nonTrivialClades.sort((a, b) => b.getProbability() - a.getProbability());
+            
+            stats.topClades = nonTrivialClades.slice(0, 10).map(clade => ({
+                size: clade.size(),
+                probability: clade.getProbability(),
+                occurrences: clade.getNumberOfOccurrences()
+            }));
+        } catch (error) {
+            console.error('Error computing CCD statistics:', error);
+            // Return partial statistics
+            stats.entropy = NaN;
+            stats.entropyLewis = NaN;
+            stats.maxTreeProbability = NaN;
+            stats.maxLogTreeProbability = NaN;
+            stats.topClades = [];
+        }
+        
+        // Display results
+        displayCCDStatistics(stats);
+        
+        hideLoading();
+        
+        // Show info about processing
+        const infoDiv = document.querySelector('.info');
+        const processingNote = document.createElement('div');
+        processingNote.className = 'ccd-processing-note';
+        
+        let noteText = '<strong>CCD Construction Summary:</strong><ul>';
+        noteText += `<li>Total trees in file: ${trees.length}</li>`;
+        
+        const burninCount = Math.floor(trees.length * burnin);
+        if (burninCount > 0) {
+            noteText += `<li>Burnin: ${burninCount} trees (${burninPercent}%)</li>`;
+        }
+        
+        noteText += `<li>Trees used: ${trees.length - burninCount}</li>`;
+        noteText += `<li>Number of clades: ${stats.numberOfClades}</li>`;
+        noteText += `<li>Phylogenetic entropy: ${stats.entropy.toFixed(4)}</li>`;
+        noteText += '</ul>';
+        
+        processingNote.innerHTML = noteText;
+        
+        // Remove any existing CCD notes
+        const existingNotes = document.querySelectorAll('.ccd-processing-note');
+        existingNotes.forEach(note => note.remove());
+        
+        infoDiv.insertBefore(processingNote, infoDiv.firstChild);
+        
+    } catch (error) {
+        showError(error.message);
+        console.error(error);
+        hideLoading();
+    }
+}
+
+// Add the displayCCDStatistics function if it's not in plot.js
+function displayCCDStatistics(stats) {
+    const statsDiv = document.getElementById('ccdStats');
+    if (!statsDiv) {
+        console.error('CCD stats div not found');
+        return;
+    }
+    
+    let html = '<h3>CCD Statistics</h3>';
+    html += '<div class="stats-grid">';
+    
+    // Basic statistics
+    html += '<div class="stat-item">';
+    html += '<div class="stat-label">Number of Trees:</div>';
+    html += `<div class="stat-value">${stats.numberOfTrees}</div>`;
+    html += '</div>';
+    
+    html += '<div class="stat-item">';
+    html += '<div class="stat-label">Number of Clades:</div>';
+    html += `<div class="stat-value">${stats.numberOfClades}</div>`;
+    html += '</div>';
+    
+    html += '<div class="stat-item">';
+    html += '<div class="stat-label">Number of Leaves:</div>';
+    html += `<div class="stat-value">${stats.numberOfLeaves}</div>`;
+    html += '</div>';
+    
+    html += '<div class="stat-item">';
+    html += '<div class="stat-label">Phylogenetic Entropy:</div>';
+    html += `<div class="stat-value">${stats.entropy.toFixed(6)}</div>`;
+    html += '</div>';
+    
+    html += '<div class="stat-item">';
+    html += '<div class="stat-label">Entropy (Lewis):</div>';
+    if (isNaN(stats.entropyLewis)) {
+        html += `<div class="stat-value" title="Skipped due to CCD size or timeout">N/A</div>`;
+    } else {
+        html += `<div class="stat-value">${stats.entropyLewis.toFixed(6)}</div>`;
+    }
+    html += '</div>';
+    
+    html += '<div class="stat-item">';
+    html += '<div class="stat-label">Max Tree Probability:</div>';
+    html += `<div class="stat-value">${stats.maxTreeProbability.toExponential(4)}</div>`;
+    html += '</div>';
+    
+    html += '<div class="stat-item">';
+    html += '<div class="stat-label">Max Log Tree Probability:</div>';
+    html += `<div class="stat-value">${stats.maxLogTreeProbability.toFixed(6)}</div>`;
+    html += '</div>';
+    
+    html += '</div>'; // end stats-grid
+    
+    // Top clades
+    if (stats.topClades && stats.topClades.length > 0) {
+        html += '<h4>Most Probable Non-trivial Clades</h4>';
+        html += '<table class="clades-table">';
+        html += '<tr><th>Clade Size</th><th>Probability</th><th>Occurrences</th></tr>';
+        
+        for (const clade of stats.topClades) {
+            html += '<tr>';
+            html += `<td>${clade.size}</td>`;
+            html += `<td>${clade.probability.toFixed(4)}</td>`;
+            html += `<td>${clade.occurrences}</td>`;
+            html += '</tr>';
+        }
+        
+        html += '</table>';
+    }
+    
+    statsDiv.innerHTML = html;
+    statsDiv.classList.remove('hidden');
+}
