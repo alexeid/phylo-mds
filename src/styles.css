@@ -278,3 +278,29 @@ th {
     border: 1px solid #90caf9;
     color: #1565c0;
 }
+
+.hard-problem-note {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #fff3e0;
+    border-radius: 5px;
+    border: 1px solid #ffcc80;
+    color: #e65100;
+    font-size: 14px;
+}
+
+.ccd-comparison {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f3e5f5;
+    border-radius: 5px;
+    border: 1px solid #ce93d8;
+}
+
+.empirical-note {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #fff;
+    border-radius: 5px;
+    font-size: 14px;
+}

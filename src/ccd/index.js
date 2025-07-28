@@ -5,6 +5,5 @@ export { computeCCDStatistics, computeCCDStatisticsAsync } from './statistics';
 export { 
     calculateDissonance, 
     calculateWithinChainDissonance, 
-    calculateCCDDissonance,
     formatDissonanceResults 
 } from './dissonance';

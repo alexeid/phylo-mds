@@ -419,6 +419,103 @@ export class AbstractCCD {
         return Math.exp(this.getMaxLogTreeProbability(progressCallback));
     }
 
+    /**
+     * Calculate the log probability of a specific tree under this CCD
+     * @param {Tree} tree - The tree to evaluate
+     * @returns {number} Log probability of the tree
+     */
+    getTreeLogProbability(tree) {
+        // First ensure clade probabilities are computed
+        this.computeCladeProbabilitiesIfDirty();
+        
+        let logProb = 0;
+        
+        // Traverse the tree and sum log CCPs
+        const calculateNodeLogProb = (node) => {
+            if (node.isLeaf()) {
+                return null; // Leaf nodes don't contribute to probability
+            }
+            
+            // Get clades for children
+            const child1Clade = calculateNodeLogProb(node.children[0]);
+            const child2Clade = calculateNodeLogProb(node.children[1]);
+            
+            // Build clade for this node
+            const cladeInBits = new BitSet(this.leafArraySize);
+            
+            if (child1Clade) {
+                cladeInBits.or(child1Clade.cladeInBits);
+            } else {
+                // Child is a leaf - add its bit
+                const leafNode = node.children[0];
+                const label = leafNode.label || leafNode.id.toString();
+                const index = this.taxonMapping.get(label);
+                if (index !== undefined) {
+                    cladeInBits.set(index);
+                }
+            }
+            
+            if (child2Clade) {
+                cladeInBits.or(child2Clade.cladeInBits);
+            } else {
+                // Child is a leaf - add its bit
+                const leafNode = node.children[1];
+                const label = leafNode.label || leafNode.id.toString();
+                const index = this.taxonMapping.get(label);
+                if (index !== undefined) {
+                    cladeInBits.set(index);
+                }
+            }
+            
+            // Find this clade in the CCD
+            const clade = this.getClade(cladeInBits);
+            if (!clade) {
+                // Clade not in CCD means probability 0
+                logProb = -Infinity;
+                return clade;
+            }
+            
+            // Find the partition
+            if (child1Clade || child2Clade) {
+                const partition = clade.getCladePartition(
+                    child1Clade || this.getLeafClade(node.children[0]),
+                    child2Clade || this.getLeafClade(node.children[1])
+                );
+                
+                if (!partition) {
+                    // Partition not in CCD means probability 0
+                    logProb = -Infinity;
+                    return clade;
+                }
+                
+                // Add log CCP to total
+                logProb += partition.getLogCCP();
+            }
+            
+            return clade;
+        };
+        
+        calculateNodeLogProb(tree.root);
+        
+        return logProb;
+    }
+    
+    /**
+     * Get the clade for a leaf node
+     * @param {Node} leafNode - A leaf node
+     * @returns {Clade} The clade containing just this leaf
+     */
+    getLeafClade(leafNode) {
+        const cladeInBits = new BitSet(this.leafArraySize);
+        const label = leafNode.label || leafNode.id.toString();
+        const index = this.taxonMapping.get(label);
+        if (index !== undefined) {
+            cladeInBits.set(index);
+            return this.getClade(cladeInBits);
+        }
+        return null;
+    }
+
     // Abstract methods to be implemented by subclasses
     tidyUpCacheIfDirty() {
         throw new Error('Abstract method tidyUpCacheIfDirty must be implemented');
