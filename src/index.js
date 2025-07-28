@@ -1,9 +1,10 @@
 import './styles.css';
-import { readTrees } from './tree-reader';
+import { readTrees, readTreesAsync } from './tree-reader';
 import { calculateDistanceMatrix, calculateDistanceMatrixWithProgress } from './distance-metrics';
 import { classicalMDS } from './mds';
 import { plotMDS, displayDistanceMatrix } from './plot';
-import { CCD1, computeCCDStatistics } from './ccd';
+import { CCD1, computeCCDStatistics, calculateWithinChainDissonance, formatDissonanceResults } from './ccd';
+import Plotly from 'plotly.js-dist';
 
 let trees = [];
 let fileContent = '';
@@ -13,6 +14,7 @@ let currentCCD = null;
 const treeFileInput = document.getElementById('treeFile');
 const calculateBtn = document.getElementById('calculateBtn');
 const computeCCDBtn = document.getElementById('computeCCDBtn');
+const checkMixingBtn = document.getElementById('checkMixingBtn');
 const errorMsg = document.getElementById('errorMsg');
 const loadingMsg = document.getElementById('loadingMsg');
 const matrixToggle = document.getElementById('matrixToggle');
@@ -23,6 +25,9 @@ treeFileInput.addEventListener('change', handleFileUpload);
 calculateBtn.addEventListener('click', calculateMDS);
 if (computeCCDBtn) {
     computeCCDBtn.addEventListener('click', computeCCD);
+}
+if (checkMixingBtn) {
+    checkMixingBtn.addEventListener('click', checkMixing);
 }
 matrixToggle.addEventListener('click', toggleMatrix);
 
@@ -35,6 +40,9 @@ function handleFileUpload(e) {
             calculateBtn.disabled = false;
             if (computeCCDBtn) {
                 computeCCDBtn.disabled = false;
+            }
+            if (checkMixingBtn) {
+                checkMixingBtn.disabled = false;
             }
             hideError();
             // Clear previous results
@@ -200,8 +208,14 @@ async function computeCCD() {
         const format = document.getElementById('fileFormat').value;
         const burninPercent = parseInt(document.getElementById('burnin').value) || 0;
         
-        // Read all trees
-        trees = readTrees(fileContent, format);
+        // Create a progress callback for reading trees
+        const readProgressCallback = async (message) => {
+            showLoading(message);
+            await new Promise(resolve => setTimeout(resolve, 0));
+        };
+        
+        // Read all trees with progress
+        trees = await readTreesAsync(fileContent, format, readProgressCallback);
         
         if (trees.length < 2) {
             throw new Error('At least 2 trees are required for CCD analysis');
@@ -434,4 +448,139 @@ function displayCCDStatistics(stats) {
     
     statsDiv.innerHTML = html;
     statsDiv.classList.remove('hidden');
+}
+
+async function checkMixing() {
+    hideError();
+    showLoading('Reading trees...');
+    
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    try {
+        const format = document.getElementById('fileFormat').value;
+        const burninPercent = parseInt(document.getElementById('burnin').value) || 0;
+        
+        // Create a progress callback for reading trees
+        const readProgressCallback = async (message) => {
+            showLoading(message);
+            await new Promise(resolve => setTimeout(resolve, 0));
+        };
+        
+        // Read all trees with progress
+        trees = await readTreesAsync(fileContent, format, readProgressCallback);
+        
+        if (trees.length < 4) {
+            throw new Error('At least 4 trees are required for mixing analysis');
+        }
+        
+        // Apply burnin
+        const burnin = burninPercent / 100;
+        const burninCount = Math.floor(trees.length * burnin);
+        const treesAfterBurnin = trees.slice(burninCount);
+        
+        if (treesAfterBurnin.length < 4) {
+            throw new Error(`After ${burninPercent}% burnin, only ${treesAfterBurnin.length} trees remain. At least 4 trees are required for mixing analysis.`);
+        }
+        
+        showLoading(`Analyzing mixing for ${treesAfterBurnin.length} trees (after ${burninPercent}% burnin)...`);
+        
+        // Calculate within-chain dissonance
+        const progressCallback = async (message) => {
+            showLoading(message);
+            await new Promise(resolve => setTimeout(resolve, 0));
+        };
+        
+        // Check mixing by comparing first and second halves
+        const results = await calculateWithinChainDissonance(treesAfterBurnin, 2, progressCallback);
+        
+        // Display results
+        displayMixingResults(results, burninCount, trees.length);
+        
+        hideLoading();
+        
+    } catch (error) {
+        showError(error.message);
+        console.error(error);
+        hideLoading();
+    }
+}
+
+function displayMixingResults(results, burninCount, totalTrees) {
+    const statsDiv = document.getElementById('ccdStats');
+    if (!statsDiv) {
+        console.error('CCD stats div not found');
+        return;
+    }
+    
+    let html = '<h3>Mixing Analysis Results</h3>';
+    
+    // Add processing summary
+    html += '<div class="mixing-summary">';
+    html += '<p><strong>Processing Summary:</strong></p>';
+    html += '<ul>';
+    html += `<li>Total trees in file: ${totalTrees}</li>`;
+    if (burninCount > 0) {
+        html += `<li>Burnin removed: ${burninCount} trees</li>`;
+    }
+    html += `<li>Trees analyzed: ${results.numTrees * results.numChains}</li>`;
+    html += `<li>Split into ${results.numSplits} equal parts of ${results.splitSize} trees each</li>`;
+    html += '</ul>';
+    html += '</div>';
+    
+    // Add dissonance results
+    html += formatDissonanceResults(results);
+    
+    // Add a plot showing dissonance over time
+    html += '<div id="dissonancePlot" style="margin-top: 20px;"></div>';
+    
+    statsDiv.innerHTML = html;
+    statsDiv.classList.remove('hidden');
+    
+    // Plot dissonance over time
+    plotDissonanceOverTime(results);
+}
+
+function plotDissonanceOverTime(results) {
+    const trace = {
+        x: Array.from({length: results.dissonanceValues.length}, (_, i) => i + 1),
+        y: results.dissonanceValues,
+        mode: 'lines',
+        type: 'scatter',
+        name: 'Dissonance',
+        line: {
+            color: 'rgb(75, 192, 192)',
+            width: 2
+        }
+    };
+    
+    const layout = {
+        title: 'Dissonance Over Time',
+        xaxis: { 
+            title: 'Tree Number',
+            tickformat: 'd'
+        },
+        yaxis: { 
+            title: 'Dissonance',
+            tickformat: '.6f'
+        },
+        hovermode: 'closest',
+        showlegend: false,
+        paper_bgcolor: 'white',
+        plot_bgcolor: 'white',
+        height: 400,
+        margin: {
+            l: 60,
+            r: 30,
+            t: 60,
+            b: 60
+        }
+    };
+    
+    const config = {
+        responsive: true,
+        displayModeBar: true,
+        displaylogo: false
+    };
+    
+    Plotly.newPlot('dissonancePlot', [trace], layout, config);
 }

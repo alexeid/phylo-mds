@@ -16,7 +16,7 @@
         <div class="controls">
             <div class="file-input-wrapper">
                 <label for="treeFile">Select tree file:</label>
-                <input type="file" id="treeFile" accept=".nwk,.newick,.nex,.nexus,.xml,.nxml,.json">
+                <input type="file" id="treeFile" accept=".nwk,.newick,.nex,.nexus,.xml,.nxml,.json,.trees,.tree,.tre,text/plain">
             </div>
 
             <div>
@@ -52,6 +52,7 @@
             
             <button id="calculateBtn" disabled>Calculate MDS</button>
             <button id="computeCCDBtn" disabled>Compute CCD Entropy</button>
+            <button id="checkMixingBtn" disabled>Check Mixing</button>
         </div>
         
         <div class="error" id="errorMsg"></div>
@@ -71,6 +72,7 @@
             <ul>
                 <li>Upload a file containing multiple phylogenetic trees</li>
                 <li>Click "Compute CCD Entropy" to calculate the phylogenetic entropy using the Conditional Clade Distribution</li>
+                <li>Click "Check Mixing" to analyze MCMC convergence by comparing tree subsets</li>
                 <li>Click "Calculate MDS" to generate a visualization of tree relationships</li>
                 <li>For MDS: Select the distance metric and adjust parameters as needed</li>
                 <li>Hover over points in the MDS plot to see tree labels</li>
